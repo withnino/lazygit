@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/davecgh/go-spew/spew"
+	"github.com/jesseduffield/lazygit/pkg/utils"
 
 	"github.com/mgutz/str"
 
@@ -95,20 +96,20 @@ func sanitisedCommandOutput(output []byte, err error) (string, error) {
 }
 
 // getOpenCommand get open command
-func (c *OSCommand) getOpenCommand() (string, string, error) {
+func (c *OSCommand) getOpenCommand() (string, error) {
 	//NextStep open equivalents: xdg-open (linux), cygstart (cygwin), open (OSX)
-	trailMap := map[string]string{
-		"xdg-open": " &>/dev/null &",
-		"cygstart": "",
-		"open":     "",
+	commandMap := map[string]string{
+		"xdg-open": "xdg-open {{filename}} &>/dev/null &",
+		"cygstart": "cygstart {{filename}}",
+		"open":     "open {{filename}}",
 	}
 
-	for name, trail := range trailMap {
-		if err := c.RunCommand("which " + name); err == nil {
-			return name, trail, nil
+	for program, command := range commandMap {
+		if err := c.RunCommand("which " + program); err == nil {
+			return command, nil
 		}
 	}
-	return "", "", errors.New("Unsure what command to use to open this file")
+	return "", errors.New("Unsure what command to use to open this file")
 }
 
 // VsCodeOpenFile opens the file in code, with the -r flag to open in the
@@ -128,12 +129,18 @@ func (c *OSCommand) SublimeOpenFile(filename string) (*exec.Cmd, error) {
 
 // OpenFile opens a file with the given
 func (c *OSCommand) OpenFile(filename string) error {
-	cmdName, cmdTrail, err := c.getOpenCommand()
+	commandTemplate, err := c.getOpenCommand()
 	if err != nil {
 		return err
 	}
 
-	return c.RunCommand(cmdName + " " + c.Quote(filename) + cmdTrail) // TODO: test on linux
+	templateValues := map[string]string{
+		"filename": c.Quote(filename),
+	}
+
+	command := utils.ResolvePlaceholderString(commandTemplate, templateValues)
+	_, err = c.RunDirectCommand(command)
+	return err
 }
 
 // EditFile opens a file in a subprocess using whatever editor is available,
